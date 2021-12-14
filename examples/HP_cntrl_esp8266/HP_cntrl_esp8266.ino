@@ -3,6 +3,7 @@
 #include <WebServer.h>
 #include <DNSServer.h>
 #include "HeatPump.h"
+#include "WiFiPass.h"
 
 const char* ssid = "esp32";
 
