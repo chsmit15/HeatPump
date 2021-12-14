@@ -1,10 +1,10 @@
-#include <ESP8266WiFi.h>
+#include <WiFi.h>
 #include <WiFiClient.h>
-#include <ESP8266WebServer.h>
+#include <WebServer.h>
 #include <DNSServer.h>
-#include <HeatPump.h>
+#include "HeatPump.h"
 
-const char* ssid = "esp8266";
+const char* ssid = "esp32";
 
 const char* html = "<html>\n<head>\n<meta name='viewport' content='width=device-width, initial-scale=2'/>\n"
                    "<meta http-equiv='refresh' content='_RATE_; url=/'/>\n"
@@ -24,7 +24,7 @@ const byte DNS_PORT = 53;
 IPAddress apIP(192, 168, 1, 1);
 IPAddress netMsk(255, 255, 255, 0);
 DNSServer dnsServer;
-ESP8266WebServer server(80);
+WebServer server(80);
 
 HeatPump hp;
 
