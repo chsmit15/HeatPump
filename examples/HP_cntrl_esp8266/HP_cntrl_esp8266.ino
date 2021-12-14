@@ -1,11 +1,16 @@
+#include <Arduino.h>
 #include <WiFi.h>
-#include <WiFiClient.h>
-#include <WebServer.h>
-#include <DNSServer.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include <AsyncElegantOTA.h>
 #include "HeatPump.h"
 #include "WiFiPass.h"
+#include <SoftwareSerial.h>
 
-const char* ssid = "esp32";
+SoftwareSerial mySerial(32, 33); // RX, TX
+
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASS;
 
 const char* html = "<html>\n<head>\n<meta name='viewport' content='width=device-width, initial-scale=2'/>\n"
                    "<meta http-equiv='refresh' content='_RATE_; url=/'/>\n"
@@ -21,11 +26,7 @@ const char* html = "<html>\n<head>\n<meta name='viewport' content='width=device-
                    "<form><input type='submit' name='CONNECT' value='Re-Connect'/>\n</form>\n"
                    "</body>\n</html>\n";
 
-const byte DNS_PORT = 53;
-IPAddress apIP(192, 168, 1, 1);
-IPAddress netMsk(255, 255, 255, 0);
-DNSServer dnsServer;
-WebServer server(80);
+AsyncWebServer server(80);
 
 HeatPump hp;
 
@@ -39,20 +40,54 @@ void setup() {
     "3",   /* Air direction (vertical): 1-5, SWING, or AUTO */
     "|"    /* Air direction (horizontal): <<, <, |, >, >>, <>, or SWING */
   });
-  WiFi.mode(WIFI_AP);
-  WiFi.softAPConfig(apIP, apIP, netMsk);
-  WiFi.softAP(ssid);//, password);
-  dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
-  dnsServer.start(DNS_PORT, "*", apIP);
-  server.on("/", handle_root);
-  server.on("/generate_204", handle_root);
-  server.onNotFound(handleNotFound);
+  // set the data rate for the SoftwareSerial port
+  mySerial.begin(9600);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  mySerial.println("");
+  // Wait for connection
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    mySerial.print(".");
+  }
+  mySerial.println("");
+  mySerial.print("Connected to ");
+  mySerial.println(ssid);
+  mySerial.print("IP address: ");
+  mySerial.println(WiFi.localIP());
+  
+  //server.on("/", handle_root);
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+      int rate = change_states(request) ? 0 : 60;
+      String toSend = html;
+      toSend.replace("_RATE_", String(rate));
+      String power[2] = {"OFF", "ON"}; 
+      toSend.replace("_POWER_", createOptionSelector("POWER", power, 2, hp.getPowerSetting()));
+      String mode[5] = {"HEAT", "DRY", "COOL", "FAN", "AUTO"};
+      toSend.replace("_MODE_", createOptionSelector("MODE", mode, 5, hp.getModeSetting()));
+      String temp[16] = {"31", "30", "29", "28", "27", "26", "25", "24", "23", "22", "21", "20", "19", "18", "17", "16"};
+      toSend.replace("_TEMP_", createOptionSelector("TEMP", temp, 16, String(hp.getTemperature()).substring(0,2)));
+      String fan[6] = {"AUTO", "QUIET", "1", "2", "3", "4"};
+      toSend.replace("_FAN_", createOptionSelector("FAN", fan, 6, hp.getFanSpeed()));
+      String vane[7] = {"AUTO", "1", "2", "3", "4", "5", "SWING"};
+      toSend.replace("_VANE_", createOptionSelector("VANE", vane, 7, hp.getVaneSetting()));
+      String widevane[7] = {"<<", "<", "|", ">", ">>", "<>", "SWING"}; 
+      toSend.replace("_WVANE_", createOptionSelector("WIDEVANE", widevane, 7, hp.getWideVaneSetting()));
+      toSend.replace("_ROOMTEMP_", String(hp.getRoomTemperature()));
+      request->send(200, "text/html", toSend);
+      delay(100);
+  });
+  //server.on("/generate_204", handle_root);
+  server.onNotFound([](AsyncWebServerRequest *request){
+    request->send(404);
+  });
+  AsyncElegantOTA.begin(&server);    // Start ElegantOTA
   server.begin();
+  mySerial.println("HTTP server started");
 }
 
 void loop() {
-  dnsServer.processNextRequest();
-  server.handleClient();
+  AsyncElegantOTA.loop();
   hp.sync();
 }
 
@@ -79,59 +114,38 @@ String createOptionSelector(String name, const String values[], int len, String 
   return str;
 }
 
-void handleNotFound() {
-  server.send ( 200, "text/plain", "URI Not Found" );
-}
+//void handleNotFound() {
+//  server.send ( 200, "text/plain", "URI Not Found" );
+//}
 
-void handle_root() {
-  int rate = change_states() ? 0 : 60;
-  String toSend = html;
-  toSend.replace("_RATE_", String(rate));
-  String power[2] = {"OFF", "ON"}; 
-  toSend.replace("_POWER_", createOptionSelector("POWER", power, 2, hp.getPowerSetting()));
-  String mode[5] = {"HEAT", "DRY", "COOL", "FAN", "AUTO"};
-  toSend.replace("_MODE_", createOptionSelector("MODE", mode, 5, hp.getModeSetting()));
-  String temp[16] = {"31", "30", "29", "28", "27", "26", "25", "24", "23", "22", "21", "20", "19", "18", "17", "16"};
-  toSend.replace("_TEMP_", createOptionSelector("TEMP", temp, 16, String(hp.getTemperature()).substring(0,2)));
-  String fan[6] = {"AUTO", "QUIET", "1", "2", "3", "4"};
-  toSend.replace("_FAN_", createOptionSelector("FAN", fan, 6, hp.getFanSpeed()));
-  String vane[7] = {"AUTO", "1", "2", "3", "4", "5", "SWING"};
-  toSend.replace("_VANE_", createOptionSelector("VANE", vane, 7, hp.getVaneSetting()));
-  String widevane[7] = {"<<", "<", "|", ">", ">>", "<>", "SWING"}; 
-  toSend.replace("_WVANE_", createOptionSelector("WIDEVANE", widevane, 7, hp.getWideVaneSetting()));
-  toSend.replace("_ROOMTEMP_", String(hp.getRoomTemperature()));
-  server.send(200, "text/html", toSend);
-  delay(100);
-}
-
-bool change_states() {
+bool change_states(AsyncWebServerRequest *request) {
   bool updated = false;
-  if (server.hasArg("CONNECT")) {
+  if (request->hasArg("CONNECT")) {
     hp.connect(&Serial);
   }
   else {
-    if (server.hasArg("POWER")) {
-      hp.setPowerSetting(server.arg("POWER").c_str());
+    if (request->hasArg("POWER")) {
+      hp.setPowerSetting(request->arg("POWER").c_str());
       updated = true;
     }
-    if (server.hasArg("MODE")) {
-      hp.setModeSetting(server.arg("MODE").c_str());
+    if (request->hasArg("MODE")) {
+      hp.setModeSetting(request->arg("MODE").c_str());
       updated = true;
     }
-    if (server.hasArg("TEMP")) {
-      hp.setTemperature(server.arg("TEMP").toFloat());
+    if (request->hasArg("TEMP")) {
+      hp.setTemperature(request->arg("TEMP").toFloat());
       updated = true;
     }
-    if (server.hasArg("FAN")) {
-      hp.setFanSpeed(server.arg("FAN").c_str());
+    if (request->hasArg("FAN")) {
+      hp.setFanSpeed(request->arg("FAN").c_str());
       updated = true;
     }
-    if (server.hasArg("VANE")) {
-      hp.setVaneSetting(server.arg("VANE").c_str());
+    if (request->hasArg("VANE")) {
+      hp.setVaneSetting(request->arg("VANE").c_str());
       updated = true;
     }
-    if (server.hasArg("DIR")) {
-      hp.setWideVaneSetting(server.arg("WIDEVANE").c_str());
+    if (request->hasArg("DIR")) {
+      hp.setWideVaneSetting(request->arg("WIDEVANE").c_str());
       updated = true;
     }
     hp.update(); 
