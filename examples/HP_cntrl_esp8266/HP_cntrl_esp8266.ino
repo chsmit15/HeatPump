@@ -6,6 +6,7 @@
 #include "HeatPump.h"
 #include "WiFiPass.h"
 #include <SoftwareSerial.h>
+#include <Adafruit_NeoPixel.h>
 
 SoftwareSerial mySerial(32, 33); // RX, TX
 
@@ -28,6 +29,8 @@ const char* html = "<html>\n<head>\n<meta name='viewport' content='width=device-
 
 AsyncWebServer server(80);
 
+Adafruit_NeoPixel pixels(1, 27, NEO_GRB + NEO_KHZ800);
+
 HeatPump hp;
 
 void setup() {
@@ -42,6 +45,9 @@ void setup() {
   });
   // set the data rate for the SoftwareSerial port
   mySerial.begin(9600);
+  
+  LEDcolorRed();
+  
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   mySerial.println("");
@@ -55,32 +61,17 @@ void setup() {
   mySerial.println(ssid);
   mySerial.print("IP address: ");
   mySerial.println(WiFi.localIP());
+  LEDcolorGreen();
   
   //server.on("/", handle_root);
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-      int rate = change_states(request) ? 0 : 60;
-      String toSend = html;
-      toSend.replace("_RATE_", String(rate));
-      String power[2] = {"OFF", "ON"}; 
-      toSend.replace("_POWER_", createOptionSelector("POWER", power, 2, hp.getPowerSetting()));
-      String mode[5] = {"HEAT", "DRY", "COOL", "FAN", "AUTO"};
-      toSend.replace("_MODE_", createOptionSelector("MODE", mode, 5, hp.getModeSetting()));
-      String temp[16] = {"31", "30", "29", "28", "27", "26", "25", "24", "23", "22", "21", "20", "19", "18", "17", "16"};
-      toSend.replace("_TEMP_", createOptionSelector("TEMP", temp, 16, String(hp.getTemperature()).substring(0,2)));
-      String fan[6] = {"AUTO", "QUIET", "1", "2", "3", "4"};
-      toSend.replace("_FAN_", createOptionSelector("FAN", fan, 6, hp.getFanSpeed()));
-      String vane[7] = {"AUTO", "1", "2", "3", "4", "5", "SWING"};
-      toSend.replace("_VANE_", createOptionSelector("VANE", vane, 7, hp.getVaneSetting()));
-      String widevane[7] = {"<<", "<", "|", ">", ">>", "<>", "SWING"}; 
-      toSend.replace("_WVANE_", createOptionSelector("WIDEVANE", widevane, 7, hp.getWideVaneSetting()));
-      toSend.replace("_ROOMTEMP_", String(hp.getRoomTemperature()));
-      request->send(200, "text/html", toSend);
-      delay(100);
-  });
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){ handle_root(request); });
+  server.on("/generate_204", [](AsyncWebServerRequest *request){ handle_root(request); });
   //server.on("/generate_204", handle_root);
   server.onNotFound([](AsyncWebServerRequest *request){
-    request->send(404);
+    handle_root(request);
+    //request->send(200, "text/plain", "URI Not Found");
   });
+  
   AsyncElegantOTA.begin(&server);    // Start ElegantOTA
   server.begin();
   mySerial.println("HTTP server started");
@@ -89,6 +80,30 @@ void setup() {
 void loop() {
   AsyncElegantOTA.loop();
   hp.sync();
+}
+
+void handle_root(AsyncWebServerRequest *request){
+  mySerial.print("Connect from ");
+  mySerial.println(request->client()->remoteIP());
+  int rate = change_states(request) ? 0 : 60;
+  String toSend = html;
+  toSend.replace("_RATE_", String(rate));
+  String power[2] = {"OFF", "ON"}; 
+  toSend.replace("_POWER_", createOptionSelector("POWER", power, 2, hp.getPowerSetting()));
+  String mode[5] = {"HEAT", "DRY", "COOL", "FAN", "AUTO"};
+  toSend.replace("_MODE_", createOptionSelector("MODE", mode, 5, hp.getModeSetting()));
+  String temp[16] = {"31", "30", "29", "28", "27", "26", "25", "24", "23", "22", "21", "20", "19", "18", "17", "16"};
+  toSend.replace("_TEMP_", createOptionSelector("TEMP", temp, 16, String(hp.getTemperature()).substring(0,2)));
+  String fan[6] = {"AUTO", "QUIET", "1", "2", "3", "4"};
+  toSend.replace("_FAN_", createOptionSelector("FAN", fan, 6, hp.getFanSpeed()));
+  String vane[7] = {"AUTO", "1", "2", "3", "4", "5", "SWING"};
+  toSend.replace("_VANE_", createOptionSelector("VANE", vane, 7, hp.getVaneSetting()));
+  String widevane[7] = {"<<", "<", "|", ">", ">>", "<>", "SWING"}; 
+  toSend.replace("_WVANE_", createOptionSelector("WIDEVANE", widevane, 7, hp.getWideVaneSetting()));
+  toSend.replace("_ROOMTEMP_", String(hp.getRoomTemperature()));
+  request->send(200, "text/html", toSend);
+  delay(100);
+  mySerial.println("Page served");
 }
 
 String encodeString(String toEncode) {
@@ -125,6 +140,8 @@ bool change_states(AsyncWebServerRequest *request) {
   }
   else {
     if (request->hasArg("POWER")) {
+      mySerial.print("Set Power: ");
+      mySerial.println(request->arg("POWER").c_str());
       hp.setPowerSetting(request->arg("POWER").c_str());
       updated = true;
     }
@@ -151,4 +168,22 @@ bool change_states(AsyncWebServerRequest *request) {
     hp.update(); 
   }
   return updated;
+}
+
+void LEDcolorRed(){
+  pixels.begin();
+  pixels.setPixelColor(0, pixels.Color(150, 0, 0));
+  pixels.show();
+}
+
+void LEDcolorBlue(){
+  pixels.begin();
+  pixels.setPixelColor(0, pixels.Color(0, 0, 150));
+  pixels.show();
+}
+
+void LEDcolorGreen(){
+  pixels.begin();
+  pixels.setPixelColor(0, pixels.Color(0, 150, 0));
+  pixels.show();
 }
