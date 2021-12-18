@@ -20,7 +20,7 @@
 #define __HeatPump_H__
 #include <stdint.h>
 #include <math.h>
-#include <HardwareSerial.h>
+#include <SoftwareSerial.h>
 #if defined(ARDUINO) && ARDUINO >= 100
 #include "Arduino.h"
 #else
@@ -147,7 +147,7 @@ class HeatPump
     // initialise to all off, then it will update shortly after connect;
     heatpumpStatus currentStatus {0, false, {TIMER_MODE_MAP[0], 0, 0, 0, 0}, 0};
   
-    HardwareSerial * _HardSerial {nullptr};
+    SoftwareSerial * _SoftwareSerial {nullptr};
     unsigned long lastSend;
     bool waitForRead;
     int infoMode;
@@ -189,8 +189,8 @@ class HeatPump
 
     // general
     HeatPump();
-    bool connect(HardwareSerial *serial);
-    bool connect(HardwareSerial *serial, int bitrate);
+    bool connect(SoftwareSerial *serial);
+    bool connect(SoftwareSerial *serial, int bitrate);
     bool update();
     void sync(byte packetType = PACKET_TYPE_DEFAULT);
     void enableExternalUpdate();

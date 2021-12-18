@@ -8,11 +8,14 @@
 #include <SoftwareSerial.h>
 #include <Adafruit_NeoPixel.h>
 
-SoftwareSerial mySerial(32, 33); // RX, TX
+//Serial mySerial(1, 3); // RX, TX
+#define mySerial Serial
+SoftwareSerial hpSer(33, 32); // RX, TX
+
 
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASS;
-String hostname = "attic_blower";
+String hostname = HOSTNAME;
 
 const char* html = "<html>\n<head>\n<meta name='viewport' content='width=device-width, initial-scale=2'/>\n"
                    "<meta http-equiv='refresh' content='_RATE_; url=/'/>\n"
@@ -37,7 +40,7 @@ HeatPump hp;
 
 
 void setup() {
-  hp.connect(&Serial);
+  hp.connect(&hpSer);
   hp.setSettings({ //set some default settings
     "ON",  /* ON/OFF */
     "FAN", /* HEAT/COOL/FAN/DRY/AUTO */
@@ -145,7 +148,7 @@ String createOptionSelector(String name, const String values[], int len, String 
 bool change_states(AsyncWebServerRequest *request) {
   bool updated = false;
   if (request->hasArg("CONNECT")) {
-    hp.connect(&Serial);
+    hp.connect(&hpSer);
   }
   else {
     if (request->hasArg("POWER")) {

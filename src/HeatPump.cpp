@@ -83,13 +83,13 @@ HeatPump::HeatPump() {
 
 // Public Methods //////////////////////////////////////////////////////////////
 
-bool HeatPump::connect(HardwareSerial *serial) {
+bool HeatPump::connect(SoftwareSerial *serial) {
 	return connect(serial, 0);
 }
 
-bool HeatPump::connect(HardwareSerial *serial, int bitrate) {
+bool HeatPump::connect(SoftwareSerial *serial, int bitrate) {
   if(serial != NULL) {
-    _HardSerial = serial;
+    _SoftwareSerial = serial;
   }
   bool retry = false;
   if(bitrate == 0) {
@@ -97,7 +97,7 @@ bool HeatPump::connect(HardwareSerial *serial, int bitrate) {
     retry = true;
   }
   connected = false;
-  _HardSerial->begin(bitrate, SERIAL_8E1);
+  _SoftwareSerial->begin(bitrate); //, SERIAL_8E1);
   if(onConnectCallback) {
     onConnectCallback();
   }
@@ -514,7 +514,7 @@ void HeatPump::createInfoPacket(byte *packet, byte packetType) {
 
 void HeatPump::writePacket(byte *packet, int length) {
   for (int i = 0; i < length; i++) {
-     _HardSerial->write((uint8_t)packet[i]);
+     _SoftwareSerial->write((uint8_t)packet[i]);
   }
 
   if(packetCallback) {
@@ -534,10 +534,10 @@ int HeatPump::readPacket() {
   
   waitForRead = false;
 
-  if(_HardSerial->available() > 0) {
+  if(_SoftwareSerial->available() > 0) {
     // read until we get start byte 0xfc
-    while(_HardSerial->available() > 0 && !foundStart) {
-      header[0] = _HardSerial->read();
+    while(_SoftwareSerial->available() > 0 && !foundStart) {
+      header[0] = _SoftwareSerial->read();
       if(header[0] == HEADER[0]) {
         foundStart = true;
         delay(100); // found that this delay increases accuracy when reading, might not be needed though
@@ -550,7 +550,7 @@ int HeatPump::readPacket() {
     
     //read header
     for(int i=1;i<5;i++) {
-      header[i] =  _HardSerial->read();
+      header[i] =  _SoftwareSerial->read();
     }
     
     //check header
@@ -558,11 +558,11 @@ int HeatPump::readPacket() {
       dataLength = header[4];
       
       for(int i=0;i<dataLength;i++) {
-        data[i] = _HardSerial->read();
+        data[i] = _SoftwareSerial->read();
       }
   
       // read checksum byte
-      data[dataLength] = _HardSerial->read();
+      data[dataLength] = _SoftwareSerial->read();
   
       // sum up the header bytes...
       for (int i = 0; i < INFOHEADER_LEN; i++) {
