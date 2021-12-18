@@ -110,7 +110,10 @@ bool HeatPump::connect(HardwareSerial *serial, int bitrate) {
   memcpy(packet, CONNECT, CONNECT_LEN);
   //for(int count = 0; count < 2; count++) {
   writePacket(packet, CONNECT_LEN);
-  while(!canRead()) { delay(10); }
+  while(!canRead()) { 
+    //mySerial.print("-");
+    delay(10);
+  }
   int packetType = readPacket();
   if(packetType != RCVD_PKT_CONNECT_SUCCESS && retry){
 	  return connect(serial, 9600);
@@ -230,10 +233,11 @@ void HeatPump::setModeSetting(const char* setting) {
 }
 
 float HeatPump::getTemperature() {
-  return currentSettings.temperature;
+  return CelsiusToFahrenheit(currentSettings.temperature);
 }
 
 void HeatPump::setTemperature(float setting) {
+  setting = FahrenheitToCelsius(setting);
   if(!tempMode){
     wantedSettings.temperature = lookupByteMapIndex(TEMP_MAP, 16, (int)(setting + 0.5)) > -1 ? setting : TEMP_MAP[0];
   }
@@ -324,7 +328,7 @@ heatpumpStatus HeatPump::getStatus() {
 }
 
 float HeatPump::getRoomTemperature() {
-  return currentStatus.roomTemperature;
+  return CelsiusToFahrenheit(currentStatus.roomTemperature);
 }
 
 bool HeatPump::getOperating() {
@@ -712,4 +716,3 @@ int HeatPump::readPacket() {
 
   return RCVD_PKT_FAIL;
 }
-
