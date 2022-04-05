@@ -5,10 +5,15 @@
 #include <AsyncElegantOTA.h>
 #include "HeatPump.h"
 #include "WiFiPass.h"
-#include <SoftwareSerial.h>
+//#include <SoftwareSerial.h>
 #include <Adafruit_NeoPixel.h>
+#include <TelnetStream.h>
+#include "esp_log.h"
 
-SoftwareSerial mySerial(32, 33); // RX, TX
+static const char* TAG = "HPMain";
+
+//SoftwareSerial softUart(32, 33); // RX, TX
+#define debugLog TelnetStream
 
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASS;
@@ -34,20 +39,20 @@ Adafruit_NeoPixel pixels(1, 27, NEO_GRB + NEO_KHZ800);
 
 HeatPump hp;
 
+#define MY_LOGI(fmt, ...) esp_log_write(ESP_LOG_INFO, TAG, fmt, ##__VA_ARGS__)
 
 
-void setup() {
-  hp.connect(&Serial);
+void setup() {  
   hp.setSettings({ //set some default settings
     "ON",  /* ON/OFF */
     "FAN", /* HEAT/COOL/FAN/DRY/AUTO */
     26,    /* Between 16 and 31 */
     "4",   /* Fan speed: 1-4, AUTO, or QUIET */
     "3",   /* Air direction (vertical): 1-5, SWING, or AUTO */
-    "|"    /* Air direction (horizontal): <<, <, |, >, >>, <>, or SWING */
-  });
-  // set the data rate for the SoftwareSerial port
-  mySerial.begin(9600);
+    "|"    /* Air direction (horizontal): <<, <, |, >, >>, <>, or SWING */  
+    });
+  Serial.begin(115200);           // for debug
+  Serial1.begin(2400, SERIAL_8N1, 33, 32); //rx and tx pins
   
   LEDcolorRed();
   
@@ -55,45 +60,57 @@ void setup() {
   //WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
   WiFi.setHostname(hostname.c_str()); //define hostname
   WiFi.begin(ssid, password);
-  mySerial.println("");
+  debugLog.println("");
   // Wait for connection
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
-    mySerial.print(".");
+    debugLog.print(".");
   }
-  mySerial.println("");
-  mySerial.print("Connected to ");
-  mySerial.println(ssid);
-  mySerial.print("IP address: ");
-  mySerial.println(WiFi.localIP());
-  LEDcolorGreen();
   
-  //server.on("/", handle_root);
+  LEDcolorBlue();
+
+  debugLog.begin();
+  esp_log_set_vprintf(&_log_vprintf);
+  //esp_log_set_vprintf(_log_vprintf);
+  //esp_log_set_vprintf(0); // even this runs without error but of course no output
+
+  delay(5000); // delay in case we want to have someone connect
+  bool initHP = hp.connect(&Serial1);
+  if(initHP){
+    LEDcolorGreen();
+    esp_log_write(ESP_LOG_INFO, TAG, "HP connected.\n");
+  } else {
+    esp_log_write(ESP_LOG_INFO, TAG, "HP NOT connected!\n");
+  }
+  
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){ handle_root(request); });
   server.on("/generate_204", [](AsyncWebServerRequest *request){ handle_root(request); });
-  //server.on("/generate_204", handle_root);
   server.onNotFound([](AsyncWebServerRequest *request){
+    MY_LOGI("Request URL not found.");
     handle_root(request);
     //request->send(200, "text/plain", "URI Not Found");
   });
   
   AsyncElegantOTA.begin(&server);    // Start ElegantOTA
   server.begin();
-  mySerial.println("HTTP server started");
+  MY_LOGI("HTTP server started");
 }
 
 void loop() {
-  //mySerial.print("Start: ");
-  //mySerial.println(millis());
+  //debugLog.print("Start: ");
+  //debugLog.println(millis());
   AsyncElegantOTA.loop();
-  //mySerial.print("Async: ");
-  //mySerial.println(millis());
+  //debugLog.print("Async: ");
+  //debugLog.println(millis());
   hp.sync();
+  
+  checkStreamInput();
+  esp_log_write(ESP_LOG_INFO, TAG, "test.\n");
 }
 
 void handle_root(AsyncWebServerRequest *request){
-  mySerial.print("Connect from ");
-  mySerial.println(request->client()->remoteIP());
+  MY_LOGI("Connect from %d",request->client()->remoteIP());
+  //debugLog.println(request->client()->remoteIP());
   int rate = change_states(request) ? 0 : 60;
   String toSend = html;
   toSend.replace("_RATE_", String(rate));
@@ -112,7 +129,7 @@ void handle_root(AsyncWebServerRequest *request){
   toSend.replace("_ROOMTEMP_", String(hp.getRoomTemperature()));
   request->send(200, "text/html", toSend);
   delay(100);
-  mySerial.println("Page served");
+  MY_LOGI("Page served");
 }
 
 String encodeString(String toEncode) {
@@ -138,19 +155,15 @@ String createOptionSelector(String name, const String values[], int len, String 
   return str;
 }
 
-//void handleNotFound() {
-//  server.send ( 200, "text/plain", "URI Not Found" );
-//}
-
 bool change_states(AsyncWebServerRequest *request) {
   bool updated = false;
   if (request->hasArg("CONNECT")) {
-    hp.connect(&Serial);
+    bool initHP = hp.connect(&Serial1);
+    MY_LOGI("hp.connect = %d", initHP);
+    //debugLog.println(initHP);
   }
   else {
     if (request->hasArg("POWER")) {
-      mySerial.print("Set Power: ");
-      mySerial.println(request->arg("POWER").c_str());
       hp.setPowerSetting(request->arg("POWER").c_str());
       updated = true;
     }
@@ -174,6 +187,8 @@ bool change_states(AsyncWebServerRequest *request) {
       hp.setWideVaneSetting(request->arg("WIDEVANE").c_str());
       updated = true;
     }
+    char buff[64]; hp.settingsString(&hp.wantedSettings, buff);
+    MY_LOGI("Update: %s",buff);
     hp.update(); 
   }
   return updated;
@@ -195,4 +210,27 @@ void LEDcolorGreen(){
   pixels.begin();
   pixels.setPixelColor(0, pixels.Color(0, 150, 0));
   pixels.show();
+}
+
+void checkStreamInput(){
+  switch (TelnetStream.read()) {
+//    case 'R':
+//    TelnetStream.stop();
+//    delay(100);
+//    ESP.restart();
+//      break;
+    case 1: // Ctrl + A
+      TelnetStream.println("bye bye");
+      Serial.println("bye world!");
+      TelnetStream.stop();
+      break;
+  }
+}
+
+int _log_vprintf(const char *fmt, va_list args){
+  char buff[256];
+  int ret = sprintf(buff, fmt, args);
+  TelnetStream.write(buff, ret);
+  //TelnetStream.println(buff); // is this correct?????
+  return ret;
 }

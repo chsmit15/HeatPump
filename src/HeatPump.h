@@ -21,6 +21,8 @@
 #include <stdint.h>
 #include <math.h>
 #include <HardwareSerial.h>
+#include <TelnetStream.h>
+#define debugLog TelnetStream
 #if defined(ARDUINO) && ARDUINO >= 100
 #include "Arduino.h"
 #else
@@ -140,10 +142,6 @@ class HeatPump
 
     static const int TIMER_INCREMENT_MINUTES = 10;
 
-    // these settings will be initialised in connect()
-    heatpumpSettings currentSettings {};
-    heatpumpSettings wantedSettings {};
-
     // initialise to all off, then it will update shortly after connect;
     heatpumpStatus currentStatus {0, false, {TIMER_MODE_MAP[0], 0, 0, 0, 0}, 0};
   
@@ -197,6 +195,11 @@ class HeatPump
     void disableExternalUpdate();
     void enableAutoUpdate();
     void disableAutoUpdate();
+    void settingsString(struct heatpumpSettings* hps, char* buff);
+
+    // these settings will be initialised in connect()
+    heatpumpSettings currentSettings {};
+    heatpumpSettings wantedSettings {};
 
     // settings
     heatpumpSettings getSettings();

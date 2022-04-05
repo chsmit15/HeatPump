@@ -116,10 +116,20 @@ bool HeatPump::connect(HardwareSerial *serial, int bitrate) {
   }
   int packetType = readPacket();
   if(packetType != RCVD_PKT_CONNECT_SUCCESS && retry){
-	  return connect(serial, 9600);
+	  return connect(serial, 115200);
   }
   return packetType == RCVD_PKT_CONNECT_SUCCESS;
   //}
+}
+
+void HeatPump::settingsString(struct heatpumpSettings* hps, char* buff){
+  sprintf(buff, "{p= %s, m= %s, ts= %f, f= %s, vv= %s, hv= %s}", 
+    (hps->power),
+    (hps->mode),
+    hps->temperature,
+    (hps->fan),
+    (hps->vane),
+    (hps->wideVane));
 }
 
 bool HeatPump::update() {
@@ -139,6 +149,7 @@ bool HeatPump::update() {
 		    delay(10);
 	    }
 	    sync(RQST_PKT_SETTINGS);
+      debugLog.print("sync(RQST_PKT_SETTINGS)");
     }
 
     return true;
